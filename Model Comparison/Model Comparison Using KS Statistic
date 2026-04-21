@@ -1,0 +1,57 @@
+import os
+import numpy as np
+import pandas as pd
+from scipy.stats import gamma, lognorm, weibull_min, kstest
+
+def process_year(main_folder, folder, threshold=0.1, max_samples=500000):
+    folder_path = os.path.join(main_folder, folder)
+    all_rain = []
+
+    for file in os.listdir(folder_path):
+        if file.endswith(".csv"):
+            file_path = os.path.join(folder_path, file)
+
+            try:
+                data = pd.read_csv(file_path, usecols=["precipitationCal"]).values.flatten()
+                data = data[data > threshold]
+
+                if len(data) > 0:
+                    all_rain.extend(data)
+
+                if len(all_rain) > max_samples:
+                    break
+            except Exception:
+                continue
+
+    rain = np.array(all_rain)
+
+    shape_g, loc_g, scale_g = gamma.fit(rain, floc=0)
+    shape_ln, loc_ln, scale_ln = lognorm.fit(rain, floc=0)
+    shape_w, loc_w, scale_w = weibull_min.fit(rain, floc=0)
+
+    ks_gamma = kstest(rain, 'gamma', args=(shape_g, loc_g, scale_g)).statistic
+    ks_lognorm = kstest(rain, 'lognorm', args=(shape_ln, loc_ln, scale_ln)).statistic
+    ks_weibull = kstest(rain, 'weibull_min', args=(shape_w, loc_w, scale_w)).statistic
+
+    return ks_gamma, ks_lognorm, ks_weibull
+
+
+def compare_years(main_folder, years):
+    results = []
+
+    for year in years:
+        ks_gamma, ks_lognorm, ks_weibull = process_year(main_folder, year)
+
+        results.append({
+            "Year": year,
+            "Gamma_KS": ks_gamma,
+            "Lognormal_KS": ks_lognorm,
+            "Weibull_KS": ks_weibull
+        })
+
+    return pd.DataFrame(results)
+
+
+if __name__ == "__main__":
+    df = compare_years("path_to_main_folder", ["kcsv2001", "kcsv2015"])
+    print(df)
