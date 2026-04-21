@@ -1,0 +1,63 @@
+import os
+import numpy as np
+import pandas as pd
+
+def temporal_analysis(main_folder, threshold=0.1):
+    results = []
+
+    for folder in sorted(os.listdir(main_folder)):
+        folder_path = os.path.join(main_folder, folder)
+
+        if not (os.path.isdir(folder_path) and folder.startswith("kcsv")):
+            continue
+
+        time_series = []
+
+        for file in sorted(os.listdir(folder_path)):
+            if file.endswith(".csv"):
+                file_path = os.path.join(folder_path, file)
+
+                try:
+                    df = pd.read_csv(file_path, usecols=["time", "precipitationCal"])
+                    timestamp = pd.to_datetime(df["time"].iloc[0])
+
+                    rain = df["precipitationCal"].values
+                    rain = rain[rain > threshold]
+
+                    mean_rain = rain.mean() if len(rain) > 0 else 0
+                    time_series.append([timestamp, mean_rain])
+                except Exception:
+                    continue
+
+        ts_df = pd.DataFrame(time_series, columns=["time", "rain"]).sort_values("time")
+
+        if len(ts_df) < 50:
+            continue
+
+        current = ts_df["rain"]
+        next_rain = ts_df["rain"].shift(-1)
+
+        correlation = current.corr(next_rain)
+
+        threshold_extreme = np.percentile(ts_df["rain"], 90)
+        current_extreme = current > threshold_extreme
+        next_extreme = next_rain > threshold_extreme
+
+        both_extreme = np.sum(current_extreme & next_extreme)
+        current_extreme_count = np.sum(current_extreme)
+
+        prob = both_extreme / current_extreme_count if current_extreme_count > 0 else 0
+
+        results.append({
+            "Year": folder,
+            "Lag1_Correlation": correlation,
+            "Extreme_Threshold": threshold_extreme,
+            "Extreme_Clustering_Prob": prob
+        })
+
+    return pd.DataFrame(results)
+
+
+if __name__ == "__main__":
+    df = temporal_analysis("path_to_main_folder")
+    df.to_csv("temporal_analysis_summary.csv", index=False)
