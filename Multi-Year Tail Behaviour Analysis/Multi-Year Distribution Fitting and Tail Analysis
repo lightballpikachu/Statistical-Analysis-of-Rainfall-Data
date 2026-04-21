@@ -1,0 +1,63 @@
+import os
+import numpy as np
+import pandas as pd
+from scipy.stats import gamma, lognorm, kstest
+
+def multi_year_analysis(main_folder, threshold=0.1, max_samples=500000):
+    results = []
+
+    for folder in sorted(os.listdir(main_folder)):
+        folder_path = os.path.join(main_folder, folder)
+
+        if os.path.isdir(folder_path) and folder.startswith("kcsv"):
+            all_rain = []
+
+            for file in os.listdir(folder_path):
+                if file.endswith(".csv"):
+                    file_path = os.path.join(folder_path, file)
+
+                    try:
+                        data = pd.read_csv(file_path, usecols=["precipitationCal"]).values.flatten()
+                        data = data[data > threshold]
+
+                        if len(data) > 0:
+                            all_rain.extend(data)
+
+                        if len(all_rain) > max_samples:
+                            break
+                    except Exception:
+                        continue
+
+            rain = np.array(all_rain)
+
+            if len(rain) < 100:
+                continue
+
+            shape_g, loc_g, scale_g = gamma.fit(rain, floc=0)
+            shape_ln, loc_ln, scale_ln = lognorm.fit(rain, floc=0)
+
+            ks_gamma = kstest(rain, 'gamma', args=(shape_g, loc_g, scale_g))
+            ks_lognorm = kstest(rain, 'lognorm', args=(shape_ln, loc_ln, scale_ln))
+
+            rain_sorted = np.sort(rain)
+            ccdf = 1 - np.arange(1, len(rain_sorted) + 1) / len(rain_sorted)
+
+            mask = ccdf > 0
+            rain_tail = rain_sorted[mask]
+            ccdf_tail = ccdf[mask]
+
+            results.append({
+                "Year": folder,
+                "Samples": len(rain),
+                "Gamma_KS": ks_gamma.statistic,
+                "Lognormal_sigma": shape_ln,
+                "Lognormal_KS": ks_lognorm.statistic,
+                "Tail_Size": len(rain_tail)
+            })
+
+    return pd.DataFrame(results)
+
+
+if __name__ == "__main__":
+    df = multi_year_analysis("path_to_main_folder")
+    df.to_csv("rainfall_multi_year_summary.csv", index=False)
