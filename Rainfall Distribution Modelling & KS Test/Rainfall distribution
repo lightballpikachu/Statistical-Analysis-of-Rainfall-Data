@@ -1,0 +1,34 @@
+import os
+import pandas as pd
+from glob import glob
+
+def compute_rainfall_statistics(base_path):
+    results = []
+
+    for year in os.listdir(base_path):
+        year_path = os.path.join(base_path, year)
+
+        if os.path.isdir(year_path):
+            files = glob(os.path.join(year_path, "*.csv"))
+
+            for file_path in files:
+                try:
+                    data = pd.read_csv(file_path, usecols=[3]).iloc[:, 0]
+
+                    results.append({
+                        "Year": year,
+                        "File": os.path.basename(file_path),
+                        "Mean": data.mean(),
+                        "Variance": data.var(),
+                        "Std_Dev": data.std(),
+                        "Kurtosis": data.kurt()
+                    })
+                except Exception:
+                    continue
+
+    return pd.DataFrame(results)
+
+
+if __name__ == "__main__":
+    base_path = "path_to_data_folder"
+    compute_rainfall_statistics(base_path).to_csv("rainfall_statistics_summary.csv", index=False)
